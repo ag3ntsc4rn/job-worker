@@ -65,18 +65,31 @@ def always_succeeds(envelope: Envelope) -> None:
     logger.info("handling job %s (%s): no-op", envelope.job_id, envelope.job_type)
 
 
-def by_job_type(handlers: Mapping[str, Handler], default: Handler = always_succeeds) -> Handler:
+def unhandled(envelope: Envelope) -> None:
+    """Fall-through for a type this deployment has no handler for: pass, but loudly.
+
+    Passing is deliberate — failing would be terminal and could kill jobs another
+    deployment sharing the topic owns. It is logged at WARNING because the other
+    way to reach here is a typo'd ``job_type``, which would otherwise look exactly
+    like success.
+    """
+    logger.warning(
+        "no handler for job type %r; completing job %s without doing anything",
+        envelope.job_type,
+        envelope.job_id,
+    )
+
+
+def by_job_type(handlers: Mapping[str, Handler], default: Handler = unhandled) -> Handler:
     """Compose per-type handlers into the single handler the loop calls.
 
     ::
 
         run(store, consumer, by_job_type({"send_report": send_report}))
 
-    An unmapped type falls through to ``default``, which succeeds rather than
-    failing the run: several worker deployments can then share one topic, each
-    handling its own types and no-op'ing the rest. Pass a ``default`` that raises
-    if this deployment owns every type on the topic and an unknown one should be
-    loud instead.
+    An unmapped type falls through to ``default`` — :func:`unhandled`, which
+    completes the run and warns. Pass a ``default`` that raises if this
+    deployment owns every type on the topic and an unknown one should fail.
     """
 
     def dispatch(envelope: Envelope) -> None:

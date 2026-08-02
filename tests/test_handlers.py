@@ -50,8 +50,10 @@ def test_routing_sends_each_type_to_its_own_handler():
     assert seen == ["report:1", "reindex:2"]
 
 
-def test_an_unmapped_type_falls_through_to_the_default_and_completes():
-    """A shared topic: types this deployment does not own are a no-op, not a failure."""
+def test_an_unmapped_type_completes_but_warns(caplog: pytest.LogCaptureFixture):
+    """A shared topic: types this deployment does not own pass — audibly, since the
+    other way to get here is a typo'd job type."""
+    caplog.set_level(logging.WARNING, logger="worker.handlers")
     store = InMemoryJobStore()
     job_id = store.add("queued")
     handler = by_job_type({"send_report": lambda envelope: None})
@@ -59,6 +61,7 @@ def test_an_unmapped_type_falls_through_to_the_default_and_completes():
     outcome = process(store, handler, {"job_id": job_id, "job_type": "someone_elses_type"})
 
     assert (outcome, store.status_of(job_id)) == ("completed", "completed")
+    assert "no handler for job type 'someone_elses_type'" in caplog.text
 
 
 def test_a_strict_default_fails_the_run_instead():

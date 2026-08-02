@@ -85,10 +85,12 @@ run(store, consumer, by_job_type({
 }), ...)
 ```
 
-An unmapped type falls through to the no-op default and completes, so multiple
-worker deployments can share one topic and each ignore the others' types. Pass
-`default=` a raising function if this deployment owns every type on the topic
-and an unknown one should be loud instead.
+An unmapped type falls through to `unhandled`, which completes the run and logs
+a WARNING. Passing rather than failing is deliberate: failing is terminal, so
+several worker deployments can share one topic and ignore each other's types —
+but the other way to reach that branch is a typo'd `job_type`, which the warning
+keeps from looking like success. Pass `default=` a raising function if this
+deployment owns every type on the topic.
 
 ### 3. Test it
 
