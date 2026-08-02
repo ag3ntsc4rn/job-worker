@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 
@@ -14,9 +14,11 @@ class MalformedEnvelope(ValueError):
 class Envelope:
     """One job message: a pointer, not the work itself.
 
-    Keeping the payload out of the message is what lets the job row stay the
-    single source of truth — a redelivery from three hours ago still runs
-    against current data rather than a stale copy baked into Kafka.
+    ``payload`` is *not* read off the message — it is resolved from the database
+    when the run is claimed (see :meth:`with_payload`). Keeping it out of the
+    message is what lets the job row stay the single source of truth: a
+    redelivery from three hours ago runs against current config rather than a
+    stale copy baked into Kafka.
     """
 
     job_id: int
@@ -26,10 +28,10 @@ class Envelope:
     @classmethod
     def parse(cls, message: dict[str, Any]) -> Envelope:
         try:
-            return cls(
-                job_id=int(message["job_id"]),
-                job_type=str(message["job_type"]),
-                payload=message.get("payload") or {},
-            )
+            return cls(job_id=int(message["job_id"]), job_type=str(message["job_type"]))
         except (KeyError, TypeError, ValueError) as err:
             raise MalformedEnvelope(f"not a job envelope: {message!r}") from err
+
+    def with_payload(self, payload: dict[str, Any]) -> Envelope:
+        """This envelope with the effective payload resolved at claim time."""
+        return replace(self, payload=payload)

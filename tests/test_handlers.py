@@ -17,12 +17,11 @@ def test_the_default_handler_does_nothing_and_reports_success(caplog: pytest.Log
     assert "job 7 (hello)" in caplog.text
 
 
-def test_an_envelope_is_a_pointer_with_an_optional_payload():
+def test_an_envelope_is_only_a_pointer():
+    """Payload never rides on the message: it is resolved from the row at claim time."""
     assert Envelope.parse({"job_id": "7", "job_type": "hello"}) == Envelope(7, "hello", {})
-    assert Envelope.parse({"job_id": 7, "job_type": "hello", "payload": None}).payload == {}
-    assert Envelope.parse({"job_id": 7, "job_type": "hello", "payload": {"a": 1}}).payload == {
-        "a": 1
-    }
+    assert Envelope.parse({"job_id": 7, "job_type": "hello", "payload": {"a": 1}}).payload == {}
+    assert Envelope(7, "hello").with_payload({"a": 1}).payload == {"a": 1}
 
 
 @pytest.mark.parametrize(

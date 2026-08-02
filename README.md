@@ -17,10 +17,11 @@ still runs against current data rather than a stale copy baked into Kafka.
 
 ```python
 envelope = Envelope.parse(message)      # not a pointer -> "malformed", commit past it
-if not store.claim(envelope.job_id):    # queued|dispatched -> running, guarded
+payload = store.claim(envelope.job_id)  # queued|dispatched -> running, + resolve config
+if payload is None:
     return "skipped"                    # redelivery, or another worker owns it
 try:
-    handler(envelope)
+    handler(envelope.with_payload(payload))
 except Exception:
     store.fail(envelope.job_id); return "failed"
 store.complete(envelope.job_id); return "completed"
@@ -28,6 +29,9 @@ store.complete(envelope.job_id); return "completed"
 
 Consequences worth knowing:
 
+* **The payload is resolved at claim time, not at enqueue.** The claim returns
+  the run's effective config (see below); a payload baked into the message would
+  mean a redelivery three hours later runs against a stale copy.
 * **The claim is the only thing preventing a double-run.** Delivery is
   at-least-once, so `claim()` — `UPDATE ... WHERE status IN ('queued',
   'dispatched')` judged by `rowcount` — is what makes the second delivery a
@@ -49,6 +53,35 @@ Consequences worth knowing:
   succeed, so it is logged and skipped rather than wedging the partition
   forever.
 
+## Job payloads
+
+A handler gets its configuration from `envelope.payload`, resolved by the claim
+as a shallow merge — the type's base config overlaid with the run's overrides,
+run wins:
+
+```sql
+payload = COALESCE(job_type_config.payload, '{}') || jobs.input_payload
+```
+
+| Source | Set by | Meaning |
+| --- | --- | --- |
+| `job_type_config.payload` | operator | the type's defaults — the master set of keys |
+| `jobs.input_payload` | producer, at enqueue | this run's overrides (audit of what was asked for) |
+| `jobs.payload` | worker, at claim | the effective result, snapshotted for debugging |
+
+Both sides are optional. A type with **no** `job_type_config` row resolves to
+`{}` and runs normally — plenty of jobs need no payload at all, and a missing
+config row is not an error. So a handler that *does* need a key should read it
+directly (`envelope.payload["recipient"]`); the resulting `KeyError` fails that
+run with a clear traceback rather than silently doing the wrong thing.
+
+Merging happens inside the claim's `UPDATE ... RETURNING payload`, so the
+snapshot and the status change can't disagree, and it costs no extra round trip.
+
+```bash
+docker compose run --rm seed report '{"rows": 5000}'   # job_type, then input_payload
+```
+
 ## Adding a handler
 
 A handler is a function of one `Envelope`. **Return** marks the run `completed`;
@@ -62,9 +95,13 @@ In [`src/worker/handlers.py`](src/worker/handlers.py):
 ```python
 def send_report(envelope: Envelope) -> None:
     recipient = envelope.payload["recipient"]     # missing -> KeyError -> failed
-    report = build_report(envelope.job_id)
-    email.send(recipient, report, timeout=30)     # always bounded
+    rows = envelope.payload.get("rows", 100)      # optional, with a default
+    email.send(recipient, build_report(rows), timeout=30)   # always bounded
 ```
+
+`envelope.payload` is the type's config merged with this run's overrides — see
+[Job payloads](#job-payloads). Per-*deployment* settings (URLs, credentials)
+belong in `config.py` instead, so they fail at startup rather than per message.
 
 ### 2. Wire it up
 
@@ -132,11 +169,6 @@ let the run stay `running` — `process()` deliberately re-raises `CircuitOpenEr
 without marking the run failed, so an open circuit leaves the message
 uncommitted and the reaper reclaims the run.
 
-Handler config belongs in [`config.py`](src/worker/config.py) as more
-`from_env` fields, alongside `DATABASE_URL` and friends — not read ad hoc from
-`os.environ` inside the handler, so a missing setting fails at startup rather
-than on the first message.
-
 ## Resilience
 
 Kafka and Postgres fail independently, so each sits behind its own
@@ -189,7 +221,9 @@ All via environment variables:
 The worker does **not** own the schema; the producer does. It requires only:
 
 ```sql
-jobs(id, status, updated_at)  -- 'queued'|'dispatched' -> 'running' -> 'completed'|'failed'
+jobs(id, job_type, status, input_payload, payload, updated_at)
+    -- 'queued'|'dispatched' -> 'running' -> 'completed'|'failed'
+job_type_config(job_type, payload)   -- optional; a missing row resolves to {}
 ```
 
 [`deploy/schema.sql`](deploy/schema.sql) provides that for local dev only.

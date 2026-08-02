@@ -38,7 +38,9 @@ def process(store: JobStore, handler: Handler, message: dict[str, Any]) -> str:
 
     Claiming *before* running is the whole safety property: the status
     compare-and-set is the only thing standing between at-least-once delivery
-    and running a job twice.
+    and running a job twice. The claim also returns the run's effective payload
+    (type config overlaid with the run's input), which is why the handler is
+    called with the envelope the claim produced rather than the parsed one.
     """
     try:
         envelope = Envelope.parse(message)
@@ -48,12 +50,15 @@ def process(store: JobStore, handler: Handler, message: dict[str, Any]) -> str:
         logger.exception("dropping unparseable message")
         return "malformed"
 
-    if not store.claim(envelope.job_id):
+    payload = store.claim(envelope.job_id)
+    if payload is None:
         logger.info("job %s already claimed; skipping redelivery", envelope.job_id)
         return "skipped"
 
     try:
-        handler(envelope)
+        # The claim resolved the run's config; an empty payload is a job type
+        # that needs none, which is why the check above is `is None`.
+        handler(envelope.with_payload(payload))
     except CircuitOpenError:
         raise  # a dependency is down, not the job's fault: do not mark it failed
     except Exception:
