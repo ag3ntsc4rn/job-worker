@@ -49,18 +49,91 @@ Consequences worth knowing:
   succeed, so it is logged and skipped rather than wedging the partition
   forever.
 
-## Writing a real handler
+## Adding a handler
 
-Replace `always_succeeds` in [`src/worker/handlers.py`](src/worker/handlers.py):
+A handler is a function of one `Envelope`. **Return** marks the run `completed`;
+**raise** marks it `failed`. That is the whole contract — the worker does the
+claiming, recording, retrying and committing around it.
+
+### 1. Write it
+
+In [`src/worker/handlers.py`](src/worker/handlers.py):
 
 ```python
-def my_handler(envelope: Envelope) -> None:
-    ...          # return -> completed;  raise -> failed
+def send_report(envelope: Envelope) -> None:
+    recipient = envelope.payload["recipient"]     # missing -> KeyError -> failed
+    report = build_report(envelope.job_id)
+    email.send(recipient, report, timeout=30)     # always bounded
 ```
 
-Two properties any handler needs: **idempotent**, since at-least-once delivery
-plus reaper re-queues mean the same job can arrive twice; and **bounded**, since
-a handler that hangs holds the run in `running` until the reaper reclaims it.
+### 2. Wire it up
+
+One type — pass it where `always_succeeds` is today in
+[`src/worker/__main__.py`](src/worker/__main__.py):
+
+```diff
+-run(store, consumer, always_succeeds, ...)
++run(store, consumer, send_report, ...)
+```
+
+Several types — route on `job_type`:
+
+```python
+run(store, consumer, by_job_type({
+    "send_report": send_report,
+    "reindex": reindex,
+}), ...)
+```
+
+An unmapped type falls through to the no-op default and completes, so multiple
+worker deployments can share one topic and each ignore the others' types. Pass
+`default=` a raising function if this deployment owns every type on the topic
+and an unknown one should be loud instead.
+
+### 3. Test it
+
+Through `process()`, against the in-memory store — the status transition *is*
+the contract, so that's the assertion:
+
+```python
+def test_a_missing_recipient_fails_the_run():
+    store = InMemoryJobStore()
+    job_id = store.add("queued")
+
+    outcome = process(store, send_report, {"job_id": job_id, "job_type": "send_report"})
+
+    assert (outcome, store.status_of(job_id)) == ("failed", "failed")
+```
+
+Then end-to-end: `docker compose run --rm seed send_report` and watch the row.
+
+### What a handler must be
+
+* **Idempotent.** Delivery is at-least-once and the reaper re-queues stranded
+  runs, so the same job can arrive twice. Key side effects on `envelope.job_id`
+  (an upsert, a conditional insert, an idempotency key on the outbound call)
+  rather than assuming one delivery.
+* **Bounded.** A handler that hangs holds the run in `running` until the reaper's
+  `run_timeout` reclaims it, which stalls that job type meanwhile. Pass explicit
+  timeouts to every network call.
+
+### When to raise, and when not to
+
+Raising is **terminal**: `failed` is a final status and nothing retries it — the
+next schedule enqueues a fresh run. So raise for a genuine business failure (bad
+input, rejected downstream), not for a blip you expect to clear.
+
+For a transient failure you have two better options: retry inside the handler
+(wrap your dependency in a `Guard` from
+[`resilience.py`](src/worker/resilience.py), same as the store and consumer), or
+let the run stay `running` — `process()` deliberately re-raises `CircuitOpenError`
+without marking the run failed, so an open circuit leaves the message
+uncommitted and the reaper reclaims the run.
+
+Handler config belongs in [`config.py`](src/worker/config.py) as more
+`from_env` fields, alongside `DATABASE_URL` and friends — not read ad hoc from
+`os.environ` inside the handler, so a missing setting fails at startup rather
+than on the first message.
 
 ## Resilience
 
@@ -172,7 +245,7 @@ breaker paths.
 | Path | Role |
 | --- | --- |
 | `src/worker/service.py` | Claim/run/record logic and the consume loop (pure) |
-| `src/worker/handlers.py` | The handler contract and the generic no-op handler |
+| `src/worker/handlers.py` | The handler contract, the generic no-op handler, per-type routing |
 | `src/worker/store.py` | `JobStore` protocol, guarded wrapper, in-memory double |
 | `src/worker/consumer.py` | `Consumer` protocol, guarded wrapper, in-memory double |
 | `src/worker/db.py` | `PostgresJobStore` — the guarded status updates |
