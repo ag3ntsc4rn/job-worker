@@ -8,8 +8,10 @@ jobs to ``completed``) and a real deployment only has to swap this out.
 Adding one
 ----------
 
-1. Write the function here. Everything it needs is on the envelope
-   (``job_id``, ``job_type``, ``payload``) or in :class:`worker.config.Config`::
+1. Write the function here. Per-run configuration is on ``envelope.payload``,
+   resolved at claim time as the type's ``job_type_config.payload`` overlaid
+   with the run's ``jobs.input_payload``; per-deployment settings (URLs,
+   credentials) belong in :class:`worker.config.Config`::
 
        def send_report(envelope: Envelope) -> None:
            recipient = envelope.payload["recipient"]        # KeyError -> failed

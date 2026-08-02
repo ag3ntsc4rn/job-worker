@@ -92,14 +92,68 @@ def test_an_unparseable_message_is_dropped_without_touching_any_job():
 
 def test_the_handler_sees_the_parsed_envelope():
     store = InMemoryJobStore()
-    job_id = store.add("queued")
+    job_id = store.add("queued", job_type="report")
     seen: list[Envelope] = []
 
-    process(store, seen.append, {"job_id": str(job_id), "job_type": "report", "payload": {"n": 1}})
+    process(store, seen.append, {"job_id": str(job_id), "job_type": "report"})
 
-    assert seen == [Envelope(job_id=job_id, job_type="report", payload={"n": 1})]
+    assert seen == [Envelope(job_id=job_id, job_type="report", payload={})]
+
+
+def test_the_handler_sees_the_type_config_as_its_payload():
+    store = InMemoryJobStore()
+    store.set_type_payload("report", {"format": "pdf", "rows": 50})
+    job_id = store.add("queued", job_type="report")
+    seen: list[Envelope] = []
+
+    assert process(store, seen.append, message(job_id, "report")) == "completed"
+    assert seen[0].payload == {"format": "pdf", "rows": 50}
+
+
+def test_a_runs_input_payload_overrides_the_type_config():
+    store = InMemoryJobStore()
+    store.set_type_payload("report", {"format": "pdf", "rows": 50})
+    job_id = store.add("queued", job_type="report", input_payload={"rows": 5000})
+    seen: list[Envelope] = []
+
+    process(store, seen.append, message(job_id, "report"))
+
+    assert seen[0].payload == {"format": "pdf", "rows": 5000}
+
+
+def test_a_type_with_no_config_runs_with_an_empty_payload():
+    """Plenty of jobs need no payload; a missing config row must not fail the run."""
+    store = InMemoryJobStore()
+    job_id = store.add("queued", job_type="needs_nothing")
+    seen: list[Envelope] = []
+
+    assert process(store, seen.append, message(job_id, "needs_nothing")) == "completed"
+    assert seen[0].payload == {}
+
+
+def test_the_payload_is_resolved_at_claim_not_at_enqueue():
+    """A redelivery hours later must run against current config, not a stale copy."""
+    store = InMemoryJobStore()
+    store.set_type_payload("report", {"rows": 50})
+    job_id = store.add("queued", job_type="report")
+    store.set_type_payload("report", {"rows": 999})  # config edited after enqueue
+    seen: list[Envelope] = []
+
+    process(store, seen.append, message(job_id, "report"))
+
+    assert seen[0].payload == {"rows": 999}
 
 
 def test_a_message_for_an_unknown_job_is_skipped():
     """Nothing to claim, so nothing runs — no row is invented."""
     assert process(InMemoryJobStore(), always_succeeds, message(999)) == "skipped"
+
+
+def test_recording_an_outcome_for_a_run_we_do_not_hold_is_refused():
+    """The completion guard mirrors the claim guard: only the holder records."""
+    store = InMemoryJobStore()
+    job_id = store.add("queued")
+
+    assert store.complete(job_id) is False  # never claimed, so not 'running'
+    assert store.fail(999) is False  # no such run
+    assert store.status_of(job_id) == "queued"

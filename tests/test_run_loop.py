@@ -132,7 +132,7 @@ def test_an_open_circuit_backs_off_and_leaves_the_message_uncommitted():
     _, consumer, _ = stocked(2)
 
     class BreakerOpenStore(InMemoryJobStore):
-        def claim(self, job_id: int) -> bool:
+        def claim(self, job_id: int) -> dict | None:
             raise CircuitOpenError("postgres-jobs is open")
 
     sleep = RecordingSleep()
@@ -145,7 +145,7 @@ def test_an_open_circuit_backs_off_and_leaves_the_message_uncommitted():
 
 def test_an_unexpected_error_does_not_kill_the_loop():
     class BrokenStore(InMemoryJobStore):
-        def claim(self, job_id: int) -> bool:
+        def claim(self, job_id: int) -> dict | None:
             raise StorageDown("database unavailable")
 
     _, consumer, _ = stocked(2)

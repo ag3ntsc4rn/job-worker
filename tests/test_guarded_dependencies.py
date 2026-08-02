@@ -85,7 +85,7 @@ def test_a_broker_outage_does_not_trip_the_database_breaker():
 
     assert consumer.state == "open"
     assert store.state == "closed"
-    assert store.claim(job_id) is True
+    assert store.claim(job_id) == {}
 
 
 def test_the_guards_are_transparent_when_both_dependencies_are_healthy():
@@ -96,7 +96,7 @@ def test_the_guards_are_transparent_when_both_dependencies_are_healthy():
 
     assert consumer.poll(1.0) == {"job_id": job_id, "job_type": "hello"}
     consumer.commit()
-    assert store.claim(job_id) and store.complete(job_id)
+    assert store.claim(job_id) is not None and store.complete(job_id)
     assert store_inner.status_of(job_id) == "completed"
     assert (store.state, consumer.state) == ("closed", "closed")
 

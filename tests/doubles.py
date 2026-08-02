@@ -30,7 +30,7 @@ class FlakyJobStore(InMemoryJobStore):
             self.remaining_failures -= 1
             raise StorageDown("database unavailable")
 
-    def claim(self, job_id: int) -> bool:
+    def claim(self, job_id: int) -> dict | None:
         self._maybe_fail()
         return super().claim(job_id)
 
