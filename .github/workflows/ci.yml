@@ -1,0 +1,136 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Lint (ruff)
+        run: ruff check .
+      - name: Test (pytest)
+        run: pytest -q --junitxml=pytest-junit.xml
+      - name: Test results summary
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import xml.etree.ElementTree as ET
+
+          try:
+              root = ET.parse("pytest-junit.xml").getroot()
+          except (FileNotFoundError, ET.ParseError):
+              print("## Test results\n\n_No test report produced._")
+              raise SystemExit(0)
+
+          suites = root.findall("testsuite") or [root]
+          tests = failures = errors = skipped = 0
+          time = 0.0
+          failed = []
+          for s in suites:
+              tests += int(s.get("tests", 0))
+              failures += int(s.get("failures", 0))
+              errors += int(s.get("errors", 0))
+              skipped += int(s.get("skipped", 0))
+              time += float(s.get("time", 0) or 0)
+              for case in s.findall("testcase"):
+                  bad = case.find("failure") is not None or case.find("error") is not None
+                  if bad:
+                      name = f'{case.get("classname", "")}::{case.get("name", "")}'.strip(":")
+                      failed.append(name)
+          passed = tests - failures - errors - skipped
+          icon = ":white_check_mark:" if not (failures or errors) else ":x:"
+          print("## Test results\n")
+          print("| Total | Passed | Failed | Errors | Skipped | Duration |")
+          print("| --- | --- | --- | --- | --- | --- |")
+          print(
+              f"| {tests} | {passed} | {failures} | {errors} | {skipped} "
+              f"| {time:.2f}s {icon} |"
+          )
+          if failed:
+              print("\n<details><summary>Failed tests</summary>\n")
+              for name in failed:
+                  print(f"- `{name}`")
+              print("\n</details>")
+          PY
+      - name: Coverage summary
+        if: always()
+        run: |
+          {
+            echo "## Coverage"
+            coverage report --format=markdown
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Coverage PR comment
+        if: always() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          marker="<!-- worker-coverage-report -->"
+          {
+            echo "$marker"
+            echo "## Coverage"
+            coverage report --format=markdown
+          } > coverage-comment.md
+          id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq "map(select(.body | startswith(\"$marker\"))) | .[0].id // empty")
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$id" -F body=@coverage-comment.md >/dev/null
+            echo "Updated coverage comment $id"
+          else
+            gh api -X POST "repos/$REPO/issues/$PR/comments" -F body=@coverage-comment.md >/dev/null
+            echo "Created coverage comment"
+          fi
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Audit deps (pip-audit)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pip-audit==2.7.3
+          echo "## Dependency audit (pip-audit)" >> "$GITHUB_STEP_SUMMARY"
+          set +e
+          pip-audit -f markdown | tee -a "$GITHUB_STEP_SUMMARY"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo ":white_check_mark: No known vulnerabilities found." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit $status
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t job-worker:ci .
+      - name: Smoke test (module imports and starts)
+        run: |
+          # No Postgres here: the container must fail on the connection, not on
+          # a broken image (bad imports, missing deps, wrong entrypoint).
+          set +e
+          out=$(docker run --rm \
+            -e DATABASE_URL=postgresql://app:app@127.0.0.1:1/app \
+            -e PGCONNECT_TIMEOUT=1 \
+            job-worker:ci \
+            python -c "import worker.__main__; print('imports ok')")
+          status=$?
+          set -e
+          echo "$out"
+          [ "$status" -eq 0 ] && echo "$out" | grep -q "imports ok"

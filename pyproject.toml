@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "job-worker"
+version = "0.1.0"
+description = "Consumes job messages from Kafka, claims the run, and records the outcome"
+requires-python = ">=3.12"
+dynamic = ["dependencies"]
+
+[project.scripts]
+job-worker = "worker.__main__:main"
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+# src layout: importable without installing the package first.
+pythonpath = ["src"]
+addopts = "--cov --cov-report=term-missing --cov-fail-under=90"
+
+[tool.coverage.run]
+source = ["src/worker"]
+omit = [
+    # Need a real Postgres/Kafka; covered by the compose walkthrough instead.
+    "src/worker/__main__.py",
+    "src/worker/db.py",
+    "src/worker/messaging.py",
+]
