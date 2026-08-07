@@ -49,9 +49,12 @@ Consequences worth knowing:
   because a circuit is open, the run is left `running` rather than marked
   `failed`, and the message stays uncommitted — the reaper's `run_timeout` is
   what eventually reclaims it.
-* **A poison message is committed past.** An unparseable message can never
-  succeed, so it is logged and skipped rather than wedging the partition
-  forever.
+* **A poison message is committed past.** A message that can never succeed is
+  logged and skipped rather than re-read forever. That covers both shapes:
+  valid JSON that is not a job pointer, and bytes that are not JSON at all —
+  the latter fails in the consumer's decode, so it is raised as
+  `MalformedEnvelope`, which the `kafka-source` guard neither retries nor counts
+  as a broker failure.
 
 ## Job payloads
 
