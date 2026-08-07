@@ -82,7 +82,7 @@ Merging happens inside the claim's `UPDATE ... RETURNING payload`, so the
 snapshot and the status change can't disagree, and it costs no extra round trip.
 
 ```bash
-docker compose run --rm seed report '{"rows": 5000}'   # job_type, then input_payload
+docker compose run --rm seed hello '{"name": "Grace"}'   # job_type, then input_payload
 ```
 
 ## Adding a handler
@@ -106,24 +106,20 @@ def send_report(envelope: Envelope) -> None:
 [Job payloads](#job-payloads). Per-*deployment* settings (URLs, credentials)
 belong in `config.py` instead, so they fail at startup rather than per message.
 
-### 2. Wire it up
+### 2. Register it
 
-One type — pass it where `always_succeeds` is today in
-[`src/worker/__main__.py`](src/worker/__main__.py):
+Add it to `HANDLERS` in the same file — the entrypoint routes on that map, so
+there is nothing else to wire:
 
 ```diff
--run(store, consumer, always_succeeds, ...)
-+run(store, consumer, send_report, ...)
+ HANDLERS: dict[str, Handler] = {
+     "hello": always_succeeds,
++    "send_report": send_report,
+ }
 ```
 
-Several types — route on `job_type`:
-
-```python
-run(store, consumer, by_job_type({
-    "send_report": send_report,
-    "reindex": reindex,
-}), ...)
-```
+Startup logs the registered types (`handling ['hello', 'send_report']`), so a
+handler you forgot to register is visible before the first message arrives.
 
 An unmapped type falls through to `unhandled`, which logs at ERROR and raises
 `UnknownJobType` — so the run is marked `failed`. Every type on this table is one
@@ -153,7 +149,8 @@ def test_a_missing_recipient_fails_the_run():
     assert (outcome, store.status_of(job_id)) == ("failed", "failed")
 ```
 
-Then end-to-end: `docker compose run --rm seed send_report` and watch the row.
+Then end-to-end, once it is in `HANDLERS`: `docker compose run --rm seed
+send_report` and watch the row.
 
 ### What a handler must be
 

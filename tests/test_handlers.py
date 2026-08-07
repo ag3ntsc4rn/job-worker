@@ -4,7 +4,7 @@ import logging
 
 import pytest
 
-from worker.handlers import UnknownJobType, always_succeeds, by_job_type, unhandled
+from worker.handlers import HANDLERS, UnknownJobType, always_succeeds, by_job_type, unhandled
 from worker.models import Envelope, MalformedEnvelope
 from worker.service import process
 from worker.store import InMemoryJobStore
@@ -32,6 +32,17 @@ def test_an_envelope_is_only_a_pointer():
 def test_anything_that_is_not_a_job_pointer_is_rejected(message: dict):
     with pytest.raises(MalformedEnvelope):
         Envelope.parse(message)
+
+
+def test_the_shipped_registry_owns_the_demo_type_and_nothing_else():
+    """The entrypoint routes on ``HANDLERS``, so what is in it is what runs."""
+    store = InMemoryJobStore()
+    registered = store.add("queued", job_type="hello")
+    unregistered = store.add("queued", job_type="send_report")
+    handler = by_job_type(HANDLERS)
+
+    assert process(store, handler, {"job_id": registered, "job_type": "hello"}) == "completed"
+    assert process(store, handler, {"job_id": unregistered, "job_type": "send_report"}) == "failed"
 
 
 def test_routing_sends_each_type_to_its_own_handler():

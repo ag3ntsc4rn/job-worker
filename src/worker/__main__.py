@@ -11,7 +11,7 @@ import logging
 from worker.config import Config
 from worker.consumer import GuardedConsumer
 from worker.db import PostgresJobStore
-from worker.handlers import always_succeeds
+from worker.handlers import HANDLERS, by_job_type
 from worker.messaging import KafkaConsumer
 from worker.service import run
 from worker.shutdown import ShutdownSignal
@@ -35,13 +35,16 @@ def main() -> int:
     shutdown = ShutdownSignal()
     shutdown.install()
     logger.info(
-        "worker started, topic=%s group=%s", cfg.kafka_topic, cfg.consumer_group
+        "worker started, topic=%s group=%s, handling %s",
+        cfg.kafka_topic,
+        cfg.consumer_group,
+        sorted(HANDLERS),
     )
     try:
         run(
             store,
             consumer,
-            always_succeeds,
+            by_job_type(HANDLERS),
             poll_timeout=cfg.poll_timeout,
             breaker_open_sleep=cfg.breaker_open_sleep,
             should_stop=shutdown,
