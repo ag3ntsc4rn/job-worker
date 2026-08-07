@@ -8,6 +8,7 @@ from tests.doubles import BrokerDown, FlakyConsumer, FlakyJobStore, RecordingSle
 from worker.config import Config
 from worker.consumer import GuardedConsumer, InMemoryConsumer
 from worker.handlers import always_succeeds
+from worker.models import MalformedEnvelope
 from worker.resilience import CircuitOpenError, NamedCircuitOpenError
 from worker.service import process
 from worker.store import GuardedJobStore, InMemoryJobStore
@@ -86,6 +87,29 @@ def test_a_broker_outage_does_not_trip_the_database_breaker():
     assert consumer.state == "open"
     assert store.state == "closed"
     assert store.claim(job_id) == {}
+
+
+def test_an_undecodable_message_is_neither_retried_nor_blamed_on_the_broker():
+    """Garbage on the topic is a producer bug: the broker's breaker stays closed."""
+
+    class UndecodableConsumer(InMemoryConsumer):
+        polls = 0
+
+        def poll(self, timeout: float) -> dict | None:
+            self.polls += 1
+            raise MalformedEnvelope("undecodable message: b'not-json-at-all'")
+
+    inner = UndecodableConsumer()
+    sleep = RecordingSleep()
+    consumer = guarded_consumer(inner, sleep)
+
+    for _ in range(5):
+        with pytest.raises(MalformedEnvelope):
+            consumer.poll(1.0)
+
+    assert inner.polls == 5  # one attempt each: no backoff spent on bad bytes
+    assert sleep.delays == []
+    assert consumer.state == "closed"  # threshold is 2, so a counted failure would show
 
 
 def test_the_guards_are_transparent_when_both_dependencies_are_healthy():

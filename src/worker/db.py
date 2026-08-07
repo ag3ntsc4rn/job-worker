@@ -12,27 +12,43 @@ than the unit suite and is excluded from coverage.
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any
 
 from psycopg_pool import ConnectionPool
 
+logger = logging.getLogger(__name__)
+
 
 class PostgresJobStore:
     def __init__(self, database_url: str, *, max_retries: int = 30, retry_delay: float = 2.0):
-        self._pool = ConnectionPool(database_url, min_size=1, max_size=5, open=False)
-        self._connect_with_retry(max_retries, retry_delay)
+        self._pool = self._open_with_retry(database_url, max_retries, retry_delay)
 
-    def _connect_with_retry(self, max_retries: int, retry_delay: float) -> None:
+    @staticmethod
+    def _open_with_retry(database_url: str, max_retries: int, retry_delay: float) -> ConnectionPool:
+        """Wait for Postgres to accept connections, then return the open pool.
+
+        A pool is single-use: once ``open`` has failed it cannot be opened again,
+        so each attempt builds a fresh one. Sharing one across attempts turns
+        every retry after the first into an instant "cannot be reused" error, and
+        the wait the caller asked for silently disappears.
+        """
         last_err: Exception | None = None
-        for _ in range(max_retries):
+        for attempt in range(1, max_retries + 1):
+            pool = ConnectionPool(database_url, min_size=1, max_size=5, open=False)
             try:
-                self._pool.open(wait=True, timeout=5)
-                return
+                pool.open(wait=True, timeout=5)
+                return pool
             except Exception as err:  # noqa: BLE001 - retry until Postgres is ready
                 last_err = err
-                time.sleep(retry_delay)
-        raise RuntimeError(f"could not connect to Postgres: {last_err}")
+                pool.close()
+                logger.warning("Postgres not ready (attempt %d/%d): %s", attempt, max_retries, err)
+                if attempt < max_retries:
+                    time.sleep(retry_delay)
+        raise RuntimeError(
+            f"could not connect to Postgres after {max_retries} attempts: {last_err}"
+        )
 
     def claim(self, job_id: int) -> dict[str, Any] | None:
         # Claim and resolve the effective payload in one statement, so the

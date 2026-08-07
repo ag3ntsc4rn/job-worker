@@ -5,7 +5,7 @@ from __future__ import annotations
 from tests.doubles import RecordingSleep, StorageDown
 from worker.consumer import InMemoryConsumer
 from worker.handlers import always_succeeds
-from worker.models import Envelope
+from worker.models import Envelope, MalformedEnvelope
 from worker.resilience import CircuitOpenError
 from worker.service import run
 from worker.shutdown import ShutdownSignal
@@ -126,6 +126,35 @@ def test_a_poison_message_is_committed_past_instead_of_wedging_the_partition():
 
     assert totals.malformed == 1
     assert len(consumer.committed) == 1
+
+
+def test_undecodable_bytes_are_committed_past_rather_than_re_read_forever():
+    """Unlike a poison envelope, a decode failure surfaces from ``poll`` itself."""
+
+    class UndecodableFirstPoll(InMemoryConsumer):
+        raised = False
+        commits = 0
+
+        def poll(self, timeout: float) -> dict | None:
+            if not self.raised:
+                self.raised = True
+                raise MalformedEnvelope("undecodable message: b'not-json-at-all'")
+            return super().poll(timeout)
+
+        def commit(self) -> None:
+            self.commits += 1
+            super().commit()
+
+    store = InMemoryJobStore()
+    job_id = store.add("queued")
+    consumer = UndecodableFirstPoll()
+    consumer.add(job_id)
+
+    totals = run_loop(store, consumer, StopAfter(2), RecordingSleep())
+
+    assert (totals.malformed, totals.completed) == (1, 1)
+    assert consumer.commits == 2  # the garbage was committed past, not left to be re-read
+    assert store.status_of(job_id) == "completed"
 
 
 def test_an_open_circuit_backs_off_and_leaves_the_message_uncommitted():

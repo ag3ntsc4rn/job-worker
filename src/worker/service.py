@@ -71,6 +71,28 @@ def process(store: JobStore, handler: Handler, message: dict[str, Any]) -> str:
     return "completed"
 
 
+def _poll_and_record(
+    store: JobStore, consumer: Consumer, handler: Handler, poll_timeout: float
+) -> str | None:
+    """One iteration: poll, record the run, commit. ``None`` if nothing was read."""
+    try:
+        message = consumer.poll(poll_timeout)
+    except MalformedEnvelope:
+        # Bytes the transport could not even decode, so there is no message to
+        # claim against. Leaving the offset uncommitted would re-read them on
+        # every poll and every restart, so they are committed past exactly as an
+        # unparseable envelope is.
+        logger.exception("dropping undecodable message")
+        consumer.commit()
+        return "malformed"
+
+    if message is None:
+        return None
+    outcome = process(store, handler, message)
+    consumer.commit()
+    return outcome
+
+
 def run(
     store: JobStore,
     consumer: Consumer,
@@ -94,11 +116,7 @@ def run(
     stats = WorkerStats()
     while not should_stop():
         try:
-            message = consumer.poll(poll_timeout)
-            if message is None:
-                continue
-            outcome = process(store, handler, message)
-            consumer.commit()
+            outcome = _poll_and_record(store, consumer, handler, poll_timeout)
         except CircuitOpenError as err:
             # Uncommitted, so the message comes back once the breaker closes.
             logger.warning("circuit open, backing off: %s", err)
@@ -107,6 +125,8 @@ def run(
         except Exception:
             logger.exception("processing failed; message left uncommitted")
             sleep(breaker_open_sleep)
+            continue
+        if outcome is None:
             continue
         if outcome == "completed":
             stats.completed += 1

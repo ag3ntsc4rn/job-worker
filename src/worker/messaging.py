@@ -1,5 +1,10 @@
 """Kafka-backed ``Consumer``.
 
+Decoding lives here, but a decode failure is deliberately *not* reported as a
+broker failure: it raises :class:`MalformedEnvelope`, which the ``kafka-source``
+guard neither retries nor counts, so garbage on the topic cannot open a breaker
+on a healthy broker.
+
 Auto-commit is off: the loop commits explicitly once the run has been recorded,
 which is what keeps delivery at-least-once rather than at-most-once. This module
 needs a real broker, so it is exercised by docker-compose rather than the unit
@@ -10,6 +15,8 @@ from __future__ import annotations
 
 import json
 from typing import Any
+
+from worker.models import MalformedEnvelope
 
 
 class KafkaConsumer:
@@ -32,7 +39,14 @@ class KafkaConsumer:
             return None
         if msg.error():
             raise RuntimeError(f"kafka poll failed: {msg.error()}")
-        return json.loads(msg.value().decode("utf-8"))
+        raw = msg.value()
+        try:
+            return json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as err:
+            # Bytes that are not JSON are a producer bug, not a broker fault, so
+            # they are raised as the same error an unparseable envelope raises:
+            # the guard lets it through unretried and the loop commits past it.
+            raise MalformedEnvelope(f"undecodable message: {raw!r}") from err
 
     def commit(self) -> None:
         self._consumer.commit(asynchronous=False)
