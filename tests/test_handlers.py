@@ -4,7 +4,7 @@ import logging
 
 import pytest
 
-from worker.handlers import always_succeeds, by_job_type
+from worker.handlers import UnknownJobType, always_succeeds, by_job_type, unhandled
 from worker.models import Envelope, MalformedEnvelope
 from worker.service import process
 from worker.store import InMemoryJobStore
@@ -49,31 +49,33 @@ def test_routing_sends_each_type_to_its_own_handler():
     assert seen == ["report:1", "reindex:2"]
 
 
-def test_an_unmapped_type_completes_but_warns(caplog: pytest.LogCaptureFixture):
-    """A shared topic: types this deployment does not own pass — audibly, since the
-    other way to get here is a typo'd job type."""
-    caplog.set_level(logging.WARNING, logger="worker.handlers")
+def test_an_unmapped_type_fails_the_run(caplog: pytest.LogCaptureFixture):
+    """An unknown type is a bug (typo, or an unregistered handler), not a no-op."""
+    caplog.set_level(logging.ERROR, logger="worker.handlers")
     store = InMemoryJobStore()
     job_id = store.add("queued")
     handler = by_job_type({"send_report": lambda envelope: None})
 
+    outcome = process(store, handler, {"job_id": job_id, "job_type": "mystery"})
+
+    assert (outcome, store.status_of(job_id)) == ("failed", "failed")
+    assert "no handler for job type 'mystery'" in caplog.text
+
+
+def test_the_raised_error_names_the_type():
+    with pytest.raises(UnknownJobType, match="mystery"):
+        unhandled(Envelope(job_id=1, job_type="mystery"))
+
+
+def test_a_permissive_default_can_pass_an_unmapped_type_instead():
+    """The escape hatch for a jobs table shared by two worker deployments."""
+    store = InMemoryJobStore()
+    job_id = store.add("queued")
+    handler = by_job_type({"send_report": lambda envelope: None}, default=lambda envelope: None)
+
     outcome = process(store, handler, {"job_id": job_id, "job_type": "someone_elses_type"})
 
     assert (outcome, store.status_of(job_id)) == ("completed", "completed")
-    assert "no handler for job type 'someone_elses_type'" in caplog.text
-
-
-def test_a_strict_default_fails_the_run_instead():
-    store = InMemoryJobStore()
-    job_id = store.add("queued")
-
-    def unknown_type(envelope: Envelope) -> None:
-        raise LookupError(f"no handler for {envelope.job_type!r}")
-
-    handler = by_job_type({"send_report": lambda envelope: None}, default=unknown_type)
-
-    assert process(store, handler, {"job_id": job_id, "job_type": "mystery"}) == "failed"
-    assert store.status_of(job_id) == "failed"
 
 
 def test_a_raising_handler_is_what_marks_a_run_failed():

@@ -122,12 +122,18 @@ run(store, consumer, by_job_type({
 }), ...)
 ```
 
-An unmapped type falls through to `unhandled`, which completes the run and logs
-a WARNING. Passing rather than failing is deliberate: failing is terminal, so
-several worker deployments can share one topic and ignore each other's types —
-but the other way to reach that branch is a typo'd `job_type`, which the warning
-keeps from looking like success. Pass `default=` a raising function if this
-deployment owns every type on the topic.
+An unmapped type falls through to `unhandled`, which logs at ERROR and raises
+`UnknownJobType` — so the run is marked `failed`. Every type on this table is one
+this worker is expected to own, so an unknown one is a bug (a typo'd `job_type`,
+or a handler nobody registered) and completing the run would report success for
+work that never happened.
+
+The exception is a `jobs` table shared by two worker deployments that handle
+disjoint types: there, whichever claims a row first would fail the other's runs,
+so pass a `default=` that simply returns. Note this is about the **table**, not
+the topic — a second deployment reading the same topic against its own database
+finds no such `job_id`, loses the claim, and skips the message before any handler
+runs.
 
 ### 3. Test it
 

@@ -67,19 +67,25 @@ def always_succeeds(envelope: Envelope) -> None:
     logger.info("handling job %s (%s): no-op", envelope.job_id, envelope.job_type)
 
 
-def unhandled(envelope: Envelope) -> None:
-    """Fall-through for a type this deployment has no handler for: pass, but loudly.
+class UnknownJobType(LookupError):
+    """No handler is registered for the run's ``job_type``."""
 
-    Passing is deliberate — failing would be terminal and could kill jobs another
-    deployment sharing the topic owns. It is logged at WARNING because the other
-    way to reach here is a typo'd ``job_type``, which would otherwise look exactly
-    like success.
+
+def unhandled(envelope: Envelope) -> None:
+    """Fall-through for a type with no handler: fail the run.
+
+    Every type reaching this worker is one it is expected to own, so an unmapped
+    type is a bug — a typo'd ``job_type``, or a handler nobody registered — and
+    completing the run would report success for work that never happened.
+
+    Pass a ``default`` that returns instead if this ``jobs`` table is ever shared
+    with a second worker deployment handling a disjoint set of types; there,
+    failing would destroy the other deployment's runs.
     """
-    logger.warning(
-        "no handler for job type %r; completing job %s without doing anything",
-        envelope.job_type,
-        envelope.job_id,
+    logger.error(
+        "no handler for job type %r; failing job %s", envelope.job_type, envelope.job_id
     )
+    raise UnknownJobType(envelope.job_type)
 
 
 def by_job_type(handlers: Mapping[str, Handler], default: Handler = unhandled) -> Handler:
@@ -90,8 +96,7 @@ def by_job_type(handlers: Mapping[str, Handler], default: Handler = unhandled) -
         run(store, consumer, by_job_type({"send_report": send_report}))
 
     An unmapped type falls through to ``default`` — :func:`unhandled`, which
-    completes the run and warns. Pass a ``default`` that raises if this
-    deployment owns every type on the topic and an unknown one should fail.
+    fails the run.
     """
 
     def dispatch(envelope: Envelope) -> None:
