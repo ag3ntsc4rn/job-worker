@@ -1,9 +1,10 @@
 """Where the actual work goes.
 
 A handler is any callable taking an :class:`Envelope`. Returning marks the run
-``completed``; raising marks it ``failed``. The default handler does no
-processing at all and always succeeds, so the service is useful as-is (it moves
-jobs to ``completed``) and a real deployment only has to swap this out.
+``completed``; raising marks it ``failed``. The entrypoint routes on
+:data:`HANDLERS`, so a job type this deployment has not registered fails rather
+than quietly reporting success -- see :func:`unhandled`. Out of the box only the
+demo type ``hello`` is registered, on a no-op handler.
 
 Adding one
 ----------
@@ -18,8 +19,11 @@ Adding one
            report = build_report(envelope.job_id)
            email.send(recipient, report, timeout=30)        # bounded, see below
 
-2. Wire it in ``worker/__main__.py`` in place of ``always_succeeds``. For more
-   than one job type, dispatch on ``envelope.job_type`` -- see ``by_job_type``.
+2. Register it in :data:`HANDLERS` under the ``job_type`` it serves. The
+   entrypoint routes on that map, so nothing else has to change::
+
+       HANDLERS = {"hello": always_succeeds, "send_report": send_report}
+
 3. Test it through ``process()`` against ``InMemoryJobStore`` (see
    ``tests/test_service.py``); the handler contract *is* the status transition,
    so asserting on ``store.status_of(job_id)`` is the assertion that matters.
@@ -60,10 +64,7 @@ Handler = Callable[[Envelope], None]
 
 
 def always_succeeds(envelope: Envelope) -> None:
-    """Generic no-op handler: records the run and reports success.
-
-    Replace this with real work, or route to it per type with ``by_job_type``.
-    """
+    """Generic no-op handler: records the run and reports success."""
     logger.info("handling job %s (%s): no-op", envelope.job_id, envelope.job_type)
 
 
@@ -86,6 +87,14 @@ def unhandled(envelope: Envelope) -> None:
         "no handler for job type %r; failing job %s", envelope.job_type, envelope.job_id
     )
     raise UnknownJobType(envelope.job_type)
+
+
+HANDLERS: dict[str, Handler] = {
+    # The types this deployment owns. Registering one here is all routing needs;
+    # anything else fails through `unhandled`. 'hello' is the compose demo type,
+    # kept on the no-op handler so a fresh stack still moves jobs to completed.
+    "hello": always_succeeds,
+}
 
 
 def by_job_type(handlers: Mapping[str, Handler], default: Handler = unhandled) -> Handler:
