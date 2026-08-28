@@ -1,7 +1,8 @@
 """Where the actual work goes.
 
 A handler is any callable taking an :class:`Envelope`. Returning marks the run
-``completed``; raising marks it ``failed``. The entrypoint routes on
+``completed`` and the returned mapping (if any) is persisted as the run's
+``result``; raising marks it ``failed``. The entrypoint routes on
 :data:`HANDLERS`, so a job type this deployment has not registered fails rather
 than quietly reporting success -- see :func:`unhandled`. Out of the box only the
 demo type ``hello`` is registered, on a no-op handler.
@@ -14,10 +15,16 @@ Adding one
    with the run's ``jobs.input_payload``; per-deployment settings (URLs,
    credentials) belong in :class:`worker.config.Config`::
 
-       def send_report(envelope: Envelope) -> None:
+       def send_report(envelope: Envelope) -> dict[str, Any] | None:
            recipient = envelope.payload["recipient"]        # KeyError -> failed
            report = build_report(envelope.job_id)
            email.send(recipient, report, timeout=30)        # bounded, see below
+           return {"pages": report.pages}                   # persisted as the result
+
+   The return value is the run's **result payload**, written to ``jobs.result``
+   when the run completes. Return ``None`` for a job that produces nothing
+   (stored as SQL ``NULL``); an explicitly empty result is ``{}`` and the two
+   stay distinguishable to readers.
 
 2. Register it in :data:`HANDLERS` under the ``job_type`` it serves. The
    entrypoint routes on that map, so nothing else has to change::
@@ -55,24 +62,26 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Mapping
+from typing import Any
 
 from worker.models import Envelope
 
 logger = logging.getLogger(__name__)
 
-Handler = Callable[[Envelope], None]
+Handler = Callable[[Envelope], dict[str, Any] | None]
 
 
-def always_succeeds(envelope: Envelope) -> None:
-    """Generic no-op handler: records the run and reports success."""
+def always_succeeds(envelope: Envelope) -> dict[str, Any] | None:
+    """Generic no-op handler: records the run and reports success, no result."""
     logger.info("handling job %s (%s): no-op", envelope.job_id, envelope.job_type)
+    return None
 
 
 class UnknownJobType(LookupError):
     """No handler is registered for the run's ``job_type``."""
 
 
-def unhandled(envelope: Envelope) -> None:
+def unhandled(envelope: Envelope) -> dict[str, Any] | None:
     """Fall-through for a type with no handler: fail the run.
 
     Every type reaching this worker is one it is expected to own, so an unmapped
@@ -108,8 +117,8 @@ def by_job_type(handlers: Mapping[str, Handler], default: Handler = unhandled) -
     fails the run.
     """
 
-    def dispatch(envelope: Envelope) -> None:
+    def dispatch(envelope: Envelope) -> dict[str, Any] | None:
         handler = handlers.get(envelope.job_type, default)
-        handler(envelope)
+        return handler(envelope)
 
     return dispatch
