@@ -139,6 +139,16 @@ policy, not the SDK.
   The first `tool_use` content block's `.input` **is** the output; no block → `InvalidOutput`.
   `stop_reason == "max_tokens"` → `InvalidOutput`. Usage from `response.usage.input_tokens/output_tokens`.
 
+**Adding an in-house provider later (e.g. an internal gateway SDK):** implement one more class in
+`llm_providers.py` satisfying `LLMClient.complete(request) -> Completion` — send `request.system` +
+`request.user_message`, force JSON output using whatever structured-output mechanism the SDK offers
+(JSON-schema response format, forced tool call, or plain "reply only with JSON" if neither exists —
+`validate_output` still enforces the schema either way), map its usage fields, and raise
+`InvalidOutput` for non-JSON/truncated replies. Then add `<NAME>_API_KEY`/`<NAME>_BASE_URL` to
+`config.py`, register it in `llm_clients()` under its provider name, and it is selectable via
+`"provider": "<name>"` / `LLM_DEFAULT_PROVIDER`. Nothing in `llm.py`, `wiring.py`, or the tests
+changes. Disable SDK-side retries if the SDK has them, so the worker's guard stays authoritative.
+
 Pin deps in `requirements.txt` (`jsonschema`, `openai`, `anthropic`) to versions published ≥ 7 days ago.
 Add `llm_providers.py` to the coverage `omit` list in `pyproject.toml`, next to `db.py`/`messaging.py`.
 
