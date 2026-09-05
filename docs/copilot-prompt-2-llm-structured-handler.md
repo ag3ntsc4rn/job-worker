@@ -229,6 +229,40 @@ stays `running`. Write the test against that behaviour rather than expecting a p
 
 Keep the repo's 90% coverage gate green. `ruff check .` and `ruff format --check` must pass.
 
+## Token/cost controls (phase 2 — implement after the core handler is green, same module)
+
+All are configuration on the job type; none require changes to callers or to the provider adapters.
+
+1. **Input size limit.** `max_input_chars` (default 32_000) in config; `parse_request` measures
+   `len(user_message)` and raises `BadPayload("input exceeds max_input_chars (N > M)")` — no model call.
+   Optional `input_fields: ["title", "body", ...]` allowlist: when present, `input` (if an object) is
+   reduced to those top-level keys before serialisation; missing keys are ignored, not errors.
+2. **Fingerprint dedup.** `dedupe: true` (default false) in config. Fingerprint =
+   `sha256(json.dumps({"system", "output_schema", "model", "input"}, sort_keys=True))`. Add
+   `JobStore.find_result_by_fingerprint(job_type, fingerprint) -> dict | None`; Postgres:
+   `SELECT result FROM jobs WHERE job_type=%s AND status='completed' AND result->>'fingerprint'=%s
+   ORDER BY updated_at DESC LIMIT 1`. On a hit, return the stored result with `"cached_from": <job_id>`
+   and `usage` zeroed; on a miss, call the model and include `"fingerprint"` in the result. Add a
+   partial index `ON jobs (job_type, (result->>'fingerprint')) WHERE status='completed'` in the
+   worker's local schema and note it for the schema owner.
+3. **Per-type daily token budget.** `daily_token_budget` in config (absent = unlimited). Before the
+   call, `JobStore.tokens_used_today(job_type) -> int` (`SUM((result->'usage'->>'input_tokens')::int +
+   (result->'usage'->>'output_tokens')::int) WHERE job_type=%s AND status='completed' AND updated_at >=
+   date_trunc('day', now())`); if `>= budget`, raise `BudgetExceeded(BadPayload)` → job `failed`,
+   no model call. Treat as a soft limit (check-then-call, one run may overshoot); say so in a docstring.
+4. **Schema tightening lint.** In `parse_request`, log a warning (not an error) when `output_schema`
+   is an object schema without `additionalProperties: false` — a cheap nudge toward bounded output.
+5. **Prompt-cache friendliness.** Keep the static content (system prompt, schema) first and the
+   `input` last in every provider request, so provider-side prefix caching applies. This is already the
+   case in the adapters above; add a one-line test asserting message order.
+6. **Batch inputs.** No handler change needed: callers may pass `input` as a list; document in the
+   type's prompt that the output is an array (`output_schema` of `type: array`). Note this in the README.
+
+Tests: oversized input → `BadPayload` with no model call; `input_fields` reduces the serialised
+message; dedup hit returns stored result with `cached_from` and zero usage, miss stores fingerprint;
+budget exhausted → `failed` without calling the fake; budget absent → unaffected. In-memory store
+implements the two new lookups over its `_jobs` dict.
+
 ## Definition of done
 
 1. Compose stack up with `OPENAI_API_KEY` (or `ANTHROPIC_API_KEY` + `LLM_DEFAULT_PROVIDER=anthropic`)

@@ -127,12 +127,48 @@ second use case costs a config row; the tenth costs a config row.
 |---|---|
 | Sensitive data sent to a model | Tachyon is our sanctioned model interface; inputs are whatever the caller already has rights to; per-type prompts can instruct redaction; type-level allowlist of who may enqueue (existing API authz). |
 | Wrong or fabricated output | Strict JSON Schema; enum-constrained fields; `confidence` field in schemas; advisory-only — a human acts, the model does not. |
-| Runaway cost | `max_tokens` + cheap default model per type; one active run per type; token usage logged per run for attribution; key scoped to non-prod first. |
+| Runaway cost | See section 6: hard caps per call, per-type budgets, dedup of repeated inputs, usage recorded per run; key scoped to non-prod first. |
 | Provider outage | Existing breaker + reaper: runs wait and retry; no cascading failure into the API or other job types. |
 | Prompt injection | No tools, no actions, no cross-system access; output must fit the schema; worst case is a bad summary that is logged and reviewed. |
 | Scope creep into "agents" | Explicitly out of scope; a tool-using mode would be a separate, separately approved handler. |
 
-## 6. Plan
+## 6. Being judicious with tokens
+
+Model spend is the one variable cost this introduces, so it is controlled at every layer — most of
+it by configuration, all of it measurable from day one.
+
+**Hard limits on every call**
+- `max_tokens` cap and the cheapest adequate model are set per job type; larger models are opted
+  into per type only when pilot metrics justify it.
+- The output schema bounds the answer: fixed fields, enums instead of prose, `maxLength` /
+  `maxItems` where it matters, no extra properties. Output cost is set by the schema, not the model.
+- At most one retry on a malformed answer; nothing else re-prompts.
+
+**Send less**
+- Input cost dominates. Callers send only the fields the prompt needs (a playbook forwards ~10
+  incident fields, not the full record); each type declares an input size limit and oversized
+  inputs are rejected before any model call.
+- The static part of every request (instructions + schema) is identical per type, so provider-side
+  prompt caching applies where available.
+
+**Never pay twice**
+- APP's claim guard already guarantees a redelivered job does not call the model again.
+- Identical inputs (re-run playbooks, caller retries) are answered from the stored result of the
+  earlier run — an input fingerprint lookup, no model call.
+- One active run per job type and the circuit breaker mean an outage or a misfiring caller cannot
+  turn into a retry storm against Tachyon.
+
+**Budgets and visibility**
+- Every run records input/output tokens, model, and latency on the job. Cost per type, per team,
+  and per day is a query, not an estimate.
+- Each type carries a daily token budget; when it is exhausted, further runs fail fast with a clear
+  reason instead of spending.
+- Chatty use cases batch several items into one run behind one shared instruction block.
+
+Pilot success criteria include cost per case alongside quality, so the production decision is made
+on measured numbers.
+
+## 7. Plan
 
 1. **Week 0 — key issued (non-prod).** Wire the Tachyon adapter; run the existing test-suite plus a
    compose end-to-end run with a `hello`-style demo type.
@@ -144,7 +180,7 @@ second use case costs a config row; the tenth costs a config row.
 4. **Scale by configuration.** Onboard use cases via config rows with a lightweight review
    (prompt + schema + owner + data classification) — no engineering cycle per use case.
 
-## 7. The ask
+## 8. The ask
 
 - A Tachyon API key for the job worker (non-production), with the usual model allowlist and quota.
 - A named contact on the model-governance side to review the pilot's prompt/schema and sample
