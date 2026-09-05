@@ -29,6 +29,16 @@ class Config:
     # how long the loop pauses after a breaker rejects a call
     breaker_open_sleep: float
     log_level: str
+    # job types routed to the generic structured-completion handler
+    llm_job_types: tuple[str, ...]
+    llm_default_provider: str
+    llm_default_model: str
+    llm_timeout: float
+    # a provider with no key is simply not configured
+    openai_api_key: str | None
+    openai_base_url: str | None
+    anthropic_api_key: str | None
+    anthropic_base_url: str | None
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> Config:
@@ -46,4 +56,14 @@ class Config:
             breaker_reset_timeout=float(get("BREAKER_RESET_TIMEOUT", "30.0")),
             breaker_open_sleep=float(get("BREAKER_OPEN_SLEEP", "5.0")),
             log_level=get("LOG_LEVEL", "INFO"),
+            llm_job_types=tuple(
+                t.strip() for t in get("LLM_JOB_TYPES", "llm_structured").split(",") if t.strip()
+            ),
+            llm_default_provider=get("LLM_DEFAULT_PROVIDER", "openai"),
+            llm_default_model=get("LLM_DEFAULT_MODEL", "gpt-4.1-mini"),
+            llm_timeout=float(get("LLM_TIMEOUT", "60.0")),
+            openai_api_key=get("OPENAI_API_KEY") or None,
+            openai_base_url=get("OPENAI_BASE_URL") or None,
+            anthropic_api_key=get("ANTHROPIC_API_KEY") or None,
+            anthropic_base_url=get("ANTHROPIC_BASE_URL") or None,
         )

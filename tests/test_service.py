@@ -24,6 +24,15 @@ def test_the_generic_handler_runs_a_queued_job_to_completed():
     assert store.status_of(job_id) == "completed"
 
 
+def test_a_handlers_return_value_is_stored_as_the_runs_result():
+    store = InMemoryJobStore()
+    job_id = store.add("queued")
+
+    assert process(store, lambda envelope: {"answer": 42}, message(job_id)) == "completed"
+    assert store.result_of(job_id) == {"answer": 42}
+    assert store.result_of(store.add("queued")) is None
+
+
 def test_a_job_already_marked_dispatched_is_claimable_too():
     """The worker can outrace the dispatcher's own mark-dispatched update."""
     store = InMemoryJobStore()

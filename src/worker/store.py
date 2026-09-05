@@ -38,7 +38,10 @@ class JobStore(Protocol):
         """
         ...
 
-    def complete(self, job_id: int) -> bool: ...
+    def complete(self, job_id: int, result: Any = None) -> bool:
+        """``running -> completed``, storing the handler's ``result`` (if any) on the row."""
+        ...
+
     def fail(self, job_id: int) -> bool: ...
     def close(self) -> None: ...
 
@@ -57,8 +60,8 @@ class GuardedJobStore:
     def claim(self, job_id: int) -> dict[str, Any] | None:
         return self._guard.call(self._inner.claim, job_id)
 
-    def complete(self, job_id: int) -> bool:
-        return self._guard.call(self._inner.complete, job_id)
+    def complete(self, job_id: int, result: Any = None) -> bool:
+        return self._guard.call(self._inner.complete, job_id, result)
 
     def fail(self, job_id: int) -> bool:
         return self._guard.call(self._inner.fail, job_id)
@@ -72,6 +75,7 @@ class _Job:
     job_type: str
     status: str
     input_payload: dict[str, Any] = field(default_factory=dict)
+    result: Any = None
 
 
 class InMemoryJobStore:
@@ -102,6 +106,9 @@ class InMemoryJobStore:
     def status_of(self, job_id: int) -> str:
         return self._jobs[job_id].status
 
+    def result_of(self, job_id: int) -> Any:
+        return self._jobs[job_id].result
+
     # -- JobStore ----------------------------------------------------------
     def claim(self, job_id: int) -> dict[str, Any] | None:
         job = self._jobs.get(job_id)
@@ -112,8 +119,11 @@ class InMemoryJobStore:
         # making the run unrunnable: plenty of jobs need no payload at all.
         return {**self._type_payloads.get(job.job_type, {}), **job.input_payload}
 
-    def complete(self, job_id: int) -> bool:
-        return self._transition(job_id, "completed")
+    def complete(self, job_id: int, result: Any = None) -> bool:
+        if not self._transition(job_id, "completed"):
+            return False
+        self._jobs[job_id].result = result
+        return True
 
     def fail(self, job_id: int) -> bool:
         return self._transition(job_id, "failed")

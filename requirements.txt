@@ -2,3 +2,6 @@ psycopg[binary]==3.2.3
 psycopg-pool==3.2.3
 confluent-kafka==2.5.3
 pybreaker==1.4.1
+jsonschema==4.26.0
+openai==3.6.0
+anthropic==1.2.0

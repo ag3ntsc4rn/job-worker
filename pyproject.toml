@@ -37,4 +37,5 @@ omit = [
     "src/worker/__main__.py",
     "src/worker/db.py",
     "src/worker/messaging.py",
+    "src/worker/llm_providers.py",
 ]

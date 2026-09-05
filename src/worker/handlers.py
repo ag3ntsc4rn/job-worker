@@ -1,7 +1,8 @@
 """Where the actual work goes.
 
 A handler is any callable taking an :class:`Envelope`. Returning marks the run
-``completed``; raising marks it ``failed``. The entrypoint routes on
+``completed`` -- and a non-``None`` return value is stored on the row as its
+JSON ``result`` -- while raising marks it ``failed``. The entrypoint routes on
 :data:`HANDLERS`, so a job type this deployment has not registered fails rather
 than quietly reporting success -- see :func:`unhandled`. Out of the box only the
 demo type ``hello`` is registered, on a no-op handler.
@@ -55,12 +56,13 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Mapping
+from typing import Any
 
 from worker.models import Envelope
 
 logger = logging.getLogger(__name__)
 
-Handler = Callable[[Envelope], None]
+Handler = Callable[[Envelope], Any]
 
 
 def always_succeeds(envelope: Envelope) -> None:
@@ -83,9 +85,7 @@ def unhandled(envelope: Envelope) -> None:
     with a second worker deployment handling a disjoint set of types; there,
     failing would destroy the other deployment's runs.
     """
-    logger.error(
-        "no handler for job type %r; failing job %s", envelope.job_type, envelope.job_id
-    )
+    logger.error("no handler for job type %r; failing job %s", envelope.job_type, envelope.job_id)
     raise UnknownJobType(envelope.job_type)
 
 
@@ -108,8 +108,8 @@ def by_job_type(handlers: Mapping[str, Handler], default: Handler = unhandled) -
     fails the run.
     """
 
-    def dispatch(envelope: Envelope) -> None:
+    def dispatch(envelope: Envelope) -> Any:
         handler = handlers.get(envelope.job_type, default)
-        handler(envelope)
+        return handler(envelope)
 
     return dispatch

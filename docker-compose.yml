@@ -54,6 +54,15 @@ services:
       KAFKA_TOPIC: jobs
       CONSUMER_GROUP: workers
       LOG_LEVEL: INFO
+      # llm_structured handler: set at least one key (e.g. in .env) or its job
+      # types fail as unhandled.
+      LLM_JOB_TYPES: llm_structured
+      LLM_DEFAULT_PROVIDER: ${LLM_DEFAULT_PROVIDER:-openai}
+      LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-gpt-4.1-mini}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
     # Replicas share one consumer group, so Kafka splits the partitions between
     # them and the claim guard covers any redelivery across a rebalance:
     #   docker compose up --scale worker=3

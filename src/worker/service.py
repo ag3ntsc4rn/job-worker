@@ -58,7 +58,7 @@ def process(store: JobStore, handler: Handler, message: dict[str, Any]) -> str:
     try:
         # The claim resolved the run's config; an empty payload is a job type
         # that needs none, which is why the check above is `is None`.
-        handler(envelope.with_payload(payload))
+        result = handler(envelope.with_payload(payload))
     except CircuitOpenError:
         raise  # a dependency is down, not the job's fault: do not mark it failed
     except Exception:
@@ -66,7 +66,7 @@ def process(store: JobStore, handler: Handler, message: dict[str, Any]) -> str:
         store.fail(envelope.job_id)
         return "failed"
 
-    store.complete(envelope.job_id)
+    store.complete(envelope.job_id, result)
     logger.info("job %s (%s) completed", envelope.job_id, envelope.job_type)
     return "completed"
 

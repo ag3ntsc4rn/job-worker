@@ -8,9 +8,17 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 
 from worker.config import Config
+from worker.handlers import Handler
+from worker.llm import (
+    BadPayload,
+    GuardedLLMClient,
+    InvalidOutput,
+    LLMClient,
+    structured_completion,
+)
 from worker.models import MalformedEnvelope
 from worker.resilience import Guard, RetryPolicy, build_breaker
 
@@ -54,3 +62,43 @@ def build_consumer_guard(cfg: Config, *, sleep: Callable[[float], None] = time.s
     # health: retrying it only burns backoff, and counting it would open this
     # breaker over someone else's bad publish.
     return build_guard("kafka-source", cfg, sleep=sleep, non_transient=(MalformedEnvelope,))
+
+
+def build_llm_guard(
+    provider: str, cfg: Config, *, sleep: Callable[[float], None] = time.sleep
+) -> Guard:
+    # A reply that fails the schema, or a payload we cannot send, says nothing
+    # about whether the provider is up: the handler owns that retry, not the guard.
+    return build_guard(
+        f"llm-{provider}", cfg, sleep=sleep, non_transient=(InvalidOutput, BadPayload)
+    )
+
+
+def build_llm_handler(
+    cfg: Config,
+    clients: Mapping[str, LLMClient],
+    *,
+    sleep: Callable[[float], None] = time.sleep,
+) -> Handler | None:
+    """The ``llm_structured`` handler with each provider behind its own guard.
+
+    ``None`` when no provider is configured, so a deployment without LLM keys
+    simply does not register the LLM job types (and fails them via ``unhandled``
+    rather than crashing at startup).
+    """
+    if not clients:
+        return None
+    if cfg.llm_default_provider not in clients:
+        raise ValueError(
+            f"LLM_DEFAULT_PROVIDER={cfg.llm_default_provider!r} has no API key configured; "
+            f"configured providers: {sorted(clients)}"
+        )
+    guarded = {
+        name: GuardedLLMClient(client, build_llm_guard(name, cfg, sleep=sleep))
+        for name, client in clients.items()
+    }
+    return structured_completion(
+        guarded,
+        default_provider=cfg.llm_default_provider,
+        default_model=cfg.llm_default_model,
+    )
