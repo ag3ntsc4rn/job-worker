@@ -1,13 +1,38 @@
-# Proposal: A Governed LLM Capability for the Job Platform
+# Proposal: A Governed LLM Capability for APP
 
-**Ask:** one Tachyon API key (non-production first, then production) for the job worker, so we can
-ship a generic, schema-validated LLM handler on our existing job platform.
+**Ask:** one Tachyon API key (non-production first, then production) for APP's job worker, so we
+can ship a generic, schema-validated LLM capability on a platform we already run.
 
-**One-liner:** Add *one* handler to the worker we already run, and every team gets a safe, audited,
-async way to apply a model to their data — no new services, no new infrastructure, no per-use-case
-code.
+**One-liner:** Add *one* handler to APP, and every team gets a safe, audited, async way to apply a
+model to their data — no new services, no new infrastructure, no per-use-case code.
 
 ---
+
+## 0. What is APP?
+
+APP is our internal **background job platform**: a reliable way to say "run this task, exactly once
+at a time, and tell me how it went." Teams use it for scheduled and on-demand back-office work
+(data syncs, sweeps, integrations) so they don't each build their own queues, retries, and
+monitoring.
+
+How a job flows through APP, in plain terms:
+
+```
+1. Request   A team (or a system such as a SOAR playbook) calls APP's API with the
+             kind of job it wants and the data for this run. The API authenticates the
+             caller and records the job in a database with status "queued".
+2. Dispatch  APP publishes a small "go do job #123" notice onto an internal message bus.
+3. Run       A worker picks up the notice, claims the job so no other worker duplicates
+             it, loads the job's configuration and data, and runs the matching handler.
+4. Record    The worker marks the job "completed" (or "failed") and stores the result.
+             The caller reads it back from the API.
+5. Recover   If a worker dies mid-run, a watchdog notices and re-queues the job.
+```
+
+What matters for this proposal: APP already provides authentication, an audit record of every
+run, one-at-a-time execution per job kind, timeouts, retries, and outage handling. A **handler**
+is the pluggable piece of code that does the actual work in step 3 — and this proposal is about
+adding one new, general-purpose handler.
 
 ## 1. The problem
 
@@ -18,14 +43,12 @@ its own credentials, its own retry/timeout handling, its own logging — and usu
 leaking a key or skipping an audit trail. The result is either nothing ships, or many small,
 inconsistent, ungoverned integrations ship.
 
-Meanwhile we already operate a platform that solves the hard operational parts: the **job
-platform** (API → outbox → Kafka → worker → Postgres) gives us authenticated enqueueing,
-one-active-run-per-type deduplication, retries with circuit breakers, stuck-run recovery, and a
-durable status record for every run.
+Meanwhile APP already solves the hard operational parts: authenticated requests, one active run
+per job kind, retries and circuit breakers, stuck-run recovery, and a durable record of every run.
 
 ## 2. The proposal
 
-Add a single generic handler to the worker — `llm_structured` — that does exactly one thing:
+Add a single generic handler to APP — `llm_structured` — that does exactly one thing:
 
 > Take a JSON input + a system prompt + a JSON Schema for the answer → make **one** model call
 > through Tachyon → validate the reply against the schema → store it on the job record.
@@ -39,7 +62,7 @@ Every use case is then a **configuration row**, not code:
 | `invoice_extract` | "Extract invoice fields; use null when absent; never guess amounts." | `vendor, invoice_number, total, currency, line_items[]` |
 | `change_risk` | "Assess the risk of this change request…" | `risk_level, rationale, blast_radius[], questions[]` |
 
-Callers use the API they already use:
+Callers use APP's API exactly as they do today:
 
 ```http
 POST /jobs
