@@ -4,7 +4,7 @@
 -- creates it. This file exists so `docker compose up` has something to run, and
 -- documents the exact contract the worker relies on:
 --
---   jobs(id, job_type, status, payload, input_payload, updated_at)
+--   jobs(id, job_type, status, payload, input_payload, result, updated_at)
 --       'queued'|'dispatched' -> 'running' -> 'completed'|'failed'
 --   job_type_config(job_type, payload)   -- optional per-type base config
 --
@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     status        TEXT        NOT NULL DEFAULT 'queued',
     input_payload JSONB       NOT NULL DEFAULT '{}'::jsonb,  -- per-run overrides, set at enqueue
     payload       JSONB       NOT NULL DEFAULT '{}'::jsonb,  -- effective config, snapshot at claim
+    result        JSONB,                                     -- handler's result, set at completion; NULL = none produced
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );

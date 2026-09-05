@@ -144,6 +144,43 @@ def test_the_payload_is_resolved_at_claim_not_at_enqueue():
     assert seen[0].payload == {"rows": 999}
 
 
+def test_what_the_handler_returns_is_recorded_as_the_runs_result():
+    store = InMemoryJobStore()
+    job_id = store.add("queued", job_type="report")
+
+    def produces(envelope: Envelope) -> dict:
+        return {"pages": 3}
+
+    assert process(store, produces, message(job_id, "report")) == "completed"
+    assert store.result_of(job_id) == {"pages": 3}
+
+
+def test_a_handler_returning_nothing_completes_with_no_result():
+    """No result stays distinguishable from an explicitly empty one."""
+    store = InMemoryJobStore()
+    silent = store.add("queued")
+    empty = store.add("queued")
+
+    def produces_empty(envelope: Envelope) -> dict:
+        return {}
+
+    assert process(store, always_succeeds, message(silent)) == "completed"
+    assert process(store, produces_empty, message(empty)) == "completed"
+    assert store.result_of(silent) is None
+    assert store.result_of(empty) == {}
+
+
+def test_a_failed_run_records_no_result():
+    store = InMemoryJobStore()
+    job_id = store.add("queued")
+
+    def explodes(envelope: Envelope) -> dict:
+        raise RuntimeError("simulated business failure")
+
+    assert process(store, explodes, message(job_id)) == "failed"
+    assert store.result_of(job_id) is None
+
+
 def test_a_message_for_an_unknown_job_is_skipped():
     """Nothing to claim, so nothing runs — no row is invented."""
     assert process(InMemoryJobStore(), always_succeeds, message(999)) == "skipped"

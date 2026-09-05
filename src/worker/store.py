@@ -38,7 +38,15 @@ class JobStore(Protocol):
         """
         ...
 
-    def complete(self, job_id: int) -> bool: ...
+    def complete(self, job_id: int, result: dict[str, Any] | None = None) -> bool:
+        """Compare-and-set ``running -> completed``, recording the run's result.
+
+        ``result`` is what the handler returned: ``None`` means the job produced
+        nothing (stored as SQL ``NULL``), while ``{}`` is an explicitly empty
+        result — the two stay distinguishable to readers.
+        """
+        ...
+
     def fail(self, job_id: int) -> bool: ...
     def close(self) -> None: ...
 
@@ -57,8 +65,8 @@ class GuardedJobStore:
     def claim(self, job_id: int) -> dict[str, Any] | None:
         return self._guard.call(self._inner.claim, job_id)
 
-    def complete(self, job_id: int) -> bool:
-        return self._guard.call(self._inner.complete, job_id)
+    def complete(self, job_id: int, result: dict[str, Any] | None = None) -> bool:
+        return self._guard.call(self._inner.complete, job_id, result)
 
     def fail(self, job_id: int) -> bool:
         return self._guard.call(self._inner.fail, job_id)
@@ -72,6 +80,7 @@ class _Job:
     job_type: str
     status: str
     input_payload: dict[str, Any] = field(default_factory=dict)
+    result: dict[str, Any] | None = None
 
 
 class InMemoryJobStore:
@@ -102,6 +111,9 @@ class InMemoryJobStore:
     def status_of(self, job_id: int) -> str:
         return self._jobs[job_id].status
 
+    def result_of(self, job_id: int) -> dict[str, Any] | None:
+        return self._jobs[job_id].result
+
     # -- JobStore ----------------------------------------------------------
     def claim(self, job_id: int) -> dict[str, Any] | None:
         job = self._jobs.get(job_id)
@@ -112,8 +124,11 @@ class InMemoryJobStore:
         # making the run unrunnable: plenty of jobs need no payload at all.
         return {**self._type_payloads.get(job.job_type, {}), **job.input_payload}
 
-    def complete(self, job_id: int) -> bool:
-        return self._transition(job_id, "completed")
+    def complete(self, job_id: int, result: dict[str, Any] | None = None) -> bool:
+        if not self._transition(job_id, "completed"):
+            return False
+        self._jobs[job_id].result = result
+        return True
 
     def fail(self, job_id: int) -> bool:
         return self._transition(job_id, "failed")

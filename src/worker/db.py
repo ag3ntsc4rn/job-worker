@@ -16,6 +16,7 @@ import logging
 import time
 from typing import Any
 
+from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
 
 logger = logging.getLogger(__name__)
@@ -74,12 +75,18 @@ class PostgresJobStore:
             ).fetchone()
         return None if row is None else row[0]
 
-    def complete(self, job_id: int) -> bool:
-        return self._guarded_update(
-            "UPDATE jobs SET status='completed', updated_at=now() "
-            "WHERE id=%s AND status='running'",
-            job_id,
-        )
+    def complete(self, job_id: int, result: dict[str, Any] | None = None) -> bool:
+        # A handler that returned nothing leaves `result` SQL NULL; an explicitly
+        # empty result is stored as '{}' so the two stay distinguishable.
+        with self._pool.connection() as conn:
+            return (
+                conn.execute(
+                    "UPDATE jobs SET status='completed', result=%s, updated_at=now() "
+                    "WHERE id=%s AND status='running'",
+                    (None if result is None else Jsonb(result), job_id),
+                ).rowcount
+                == 1
+            )
 
     def fail(self, job_id: int) -> bool:
         return self._guarded_update(

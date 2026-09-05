@@ -34,9 +34,9 @@ class FlakyJobStore(InMemoryJobStore):
         self._maybe_fail()
         return super().claim(job_id)
 
-    def complete(self, job_id: int) -> bool:
+    def complete(self, job_id: int, result: dict | None = None) -> bool:
         self._maybe_fail()
-        return super().complete(job_id)
+        return super().complete(job_id, result)
 
 
 class FlakyConsumer(InMemoryConsumer):
