@@ -50,19 +50,32 @@ fast when exhausted; usage recorded on every run so cost per type/team/day is a 
 | Provider outage | Existing breaker + reaper; no cascade into other job types |
 | Scope creep into agents | Out of scope; tool use would be a separately approved handler |
 
-## Plan
+## Security use cases
 
-1. **Week 0:** key issued (non-prod); wire adapter; run test suite and compose end-to-end.
-2. **Pilot (2–3 weeks):** `xsoar_incident_summary`, advisory notes on cases tagged as
-   AI-generated. Measure analyst rating, time saved, cost per case, schema-rejection rate.
-3. **Review** with security leadership and model governance; decide on production key.
-4. **Scale by configuration** with a lightweight review per new type (prompt, schema, owner, data
-   classification).
+Each is one config row (prompt + output schema) behind the same handler; all are advisory and
+written back to the system of record as an AI-generated note for an analyst to act on.
+
+| Product | Job type | What the model produces |
+|---|---|---|
+| XSOAR / future SOAR | `incident_summary` | Handover summary, timeline, impact, recommended actions, suggested severity |
+| XSOAR / future SOAR | `alert_dedup_hint` | Likely duplicate/related incidents with rationale, for playbook merge decisions |
+| ServiceNow SIR | `sir_triage` | Category, severity, assignment group, extracted IOCs, confidence |
+| ServiceNow SIR | `closure_notes` | Draft resolution/closure notes from the case worknotes |
+| Vega | `finding_summary` | Plain-language summary and business impact of a finding for the asset owner |
+| VECTR | `test_case_narrative` | Narrative of detection gaps and remediation suggestions from a purple-team run |
+| Jira | `vuln_ticket_enrich` | Remediation steps, affected component, suggested priority and owner |
+| Home-grown apps | `log_anomaly_explain` | Explanation and hypothesis for a flagged event, with fields to check next |
+| Any | `ioc_extract` | Structured IOCs (IPs, domains, hashes, CVEs) from free-text reports or emails |
+| Any | `phishing_triage` | Verdict, indicators, and user-facing response for reported emails |
+
+Because APP fronts all of these through one API, a playbook in XSOAR, a flow in ServiceNow, or a
+cron in a home-grown app onboards the same way: enqueue a job, poll the result. Swapping SOAR
+vendors changes the caller, not the capability.
 
 ## The ask
 
 - A non-production Tachyon key for the job worker, with the usual model allowlist and quota.
-- A named model-governance contact to review the pilot prompt/schema and sample outputs.
-- Agreement in principle that successful pilot metrics unlock a production key.
+- A named model-governance contact to review prompts, schemas, and sample outputs.
+- Agreement in principle that good non-production results unlock a production key.
 
 One governed door, many use cases behind it.
