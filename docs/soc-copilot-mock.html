@@ -1,0 +1,153 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>SOC Copilot — mock</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font:13px/1.4 -apple-system,Segoe UI,Roboto,sans-serif;background:#0f1218;color:#e6e9ef;min-height:100vh;display:grid;grid-template-rows:46px 1fr;grid-template-columns:230px 1fr 320px}
+.top{grid-column:1/4;display:flex;align-items:center;gap:14px;padding:0 16px;background:#161a23;border-bottom:1px solid #262b36}
+.brand{font-weight:700;letter-spacing:.3px}.brand span{color:#6ea8fe}
+.seg{display:flex;background:#0f1218;border:1px solid #2a303d;border-radius:6px;overflow:hidden}.seg div{padding:5px 11px;color:#9aa3b2}.seg .on{background:#2a5bd7;color:#fff}
+.badge{border:1px solid #3a4152;border-radius:12px;padding:2px 9px;font-size:11px;color:#c9d1dd}.badge.amber{border-color:#b8860b;color:#f0c75e}
+.spacer{flex:1}.meter{font-size:11px;color:#9aa3b2}.meter b{color:#8fd19e}
+.rail{background:#12161e;border-right:1px solid #262b36;padding:12px}.rail h4{margin:10px 0 6px;font-size:11px;text-transform:uppercase;color:#7d8696;letter-spacing:.5px}
+.rail div.i{padding:6px 8px;border-radius:5px;color:#c9d1dd}.rail div.i.on{background:#1e2635;color:#fff}.rail .new{background:#2a5bd7;color:#fff;text-align:center;border-radius:6px;padding:7px;font-weight:600}
+.chat{display:flex;flex-direction:column;min-width:0}.msgs{flex:1;padding:18px 26px;display:flex;flex-direction:column;gap:14px}
+.user{align-self:flex-end;background:#2a5bd7;color:#fff;padding:9px 13px;border-radius:12px 12px 2px 12px;max-width:70%}
+.card{background:#161a23;border:1px solid #2a303d;border-radius:10px;max-width:720px;overflow:hidden}
+.card .hd{display:flex;align-items:center;gap:8px;padding:9px 12px;background:#1b202b;border-bottom:1px solid #2a303d;font-weight:600}
+.tag{font-size:10px;padding:2px 7px;border-radius:4px;background:#243049;color:#8fb3ff;text-transform:uppercase;letter-spacing:.4px}
+.tag.red{background:#4a1f24;color:#ff8f8f}.tag.grn{background:#1e3a2a;color:#8fd19e}.tag.amb{background:#463a12;color:#f0c75e}
+.card .bd{padding:12px;display:grid;gap:10px}.card p{margin:0}.k{color:#7d8696;font-size:11px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.list{margin:0;padding-left:16px}.list li{margin:2px 0}
+.chips span{display:inline-block;background:#0f1218;border:1px solid #2a303d;border-radius:4px;padding:2px 7px;margin:2px 4px 2px 0;font-family:ui-monospace,monospace;font-size:11px}
+table{width:100%;border-collapse:collapse;font-size:12px}td,th{padding:5px 6px;border-bottom:1px solid #262b36;text-align:left}th{color:#7d8696;font-weight:600}
+.ft{display:flex;align-items:center;gap:10px;padding:7px 12px;border-top:1px solid #2a303d;background:#12161e;font-size:11px;color:#7d8696}.ft .spacer{flex:1}
+.btn{border:1px solid #3a4152;background:#1b202b;color:#e6e9ef;border-radius:6px;padding:5px 11px;font-size:12px}.btn.pri{background:#2a5bd7;border-color:#2a5bd7;color:#fff;font-weight:600}.btn.ghost{background:transparent}
+.fb{margin-left:auto;color:#9aa3b2}
+.compose{padding:12px 26px;border-top:1px solid #262b36;background:#12161e}
+.compose .box{display:flex;align-items:center;gap:8px;background:#0f1218;border:1px solid #2a303d;border-radius:10px;padding:9px 12px;color:#7d8696}
+.compose .hint{font-size:11px;color:#5f6877;margin-top:6px}
+.ctx{background:#12161e;border-left:1px solid #262b36;padding:14px;overflow:auto}.ctx h4{margin:12px 0 6px;font-size:11px;text-transform:uppercase;color:#7d8696;letter-spacing:.5px}
+.kv{display:grid;grid-template-columns:90px 1fr;gap:4px 8px;font-size:12px}.kv div:nth-child(odd){color:#7d8696}
+pre{background:#0f1218;border:1px solid #2a303d;border-radius:6px;padding:8px;font-size:11px;color:#b6c2d4;margin:0;white-space:pre-wrap}
+.redact{background:#3a4152;color:#3a4152;border-radius:2px}
+.diff{font-family:ui-monospace,monospace;font-size:12px}.diff .del{color:#ff8f8f;text-decoration:line-through}.diff .add{color:#8fd19e}
+</style></head><body>
+<div class="top">
+  <div class="brand">APP <span>/ SOC Copilot</span></div>
+  <div class="seg"><div class="on">SOC</div><div>Vuln</div><div>Purple team</div><div>Exec</div></div>
+  <span class="badge amber">Data class: Confidential</span>
+  <span class="badge">Grounded in: XSOAR #6042</span>
+  <div class="spacer"></div>
+  <span class="meter">incident_summary budget today <b>71% left</b> · 2.1k tokens/case avg</span>
+  <span class="badge">m.menon · SOC L2</span>
+</div>
+
+<div class="rail">
+  <div class="new">+ New conversation</div>
+  <h4>Pinned cases</h4>
+  <div class="i on">XSOAR #6042 · Suspicious OAuth grant</div>
+  <div class="i">SIR0048811 · Phishing wave (fin)</div>
+  <div class="i">XSOAR #6017 · Beaconing, HR-LT-22</div>
+  <h4>Saved questions</h4>
+  <div class="i">P1s this week</div>
+  <div class="i">Open Vega criticals w/o Jira</div>
+  <div class="i">Repeat sender domains, 30d</div>
+  <div class="i">Cost per type, MTD</div>
+  <h4>Recent</h4>
+  <div class="i">Detection tuning: T1078 FP burst</div>
+  <div class="i">Weekly posture draft</div>
+  <div class="i">New type: vega_owner_summary</div>
+</div>
+
+<div class="chat">
+ <div class="msgs">
+  <div class="user">What do we know about incident 6042?</div>
+
+  <div class="card">
+   <div class="hd">Incident Dossier <span class="tag">XSOAR #6042</span><span class="tag red">Suggested: HIGH</span><span class="fb">confidence 0.82</span></div>
+   <div class="bd">
+    <p><b>Summary.</b> A user in Finance consented to a third-party OAuth app ("PDF Merge Pro") requesting <code>Mail.ReadWrite</code> and <code>offline_access</code>. Within 4 minutes the app enumerated 1,100 mailbox items and created an inbox rule forwarding invoices externally. Pattern matches consent-phishing seen in #5871 and #5903.</p>
+    <div class="row">
+     <div><div class="k">Timeline</div><ul class="list"><li>09:12 consent granted (Entra sign-in from residential IP)</li><li>09:14 Graph mailbox enumeration begins</li><li>09:16 inbox rule "Invoices" created → external domain</li><li>09:31 alert raised by MCAS policy</li></ul></div>
+     <div><div class="k">Recommended actions</div><ul class="list"><li>Revoke app consent & refresh tokens</li><li>Delete inbox rule, notify Finance lead</li><li>Block app ID tenant-wide</li><li>Hunt: other consents to same publisher</li></ul></div>
+    </div>
+    <div><div class="k">IOCs</div><div class="chips"><span>app_id 3f1c…9a2e</span><span>inv-relay[.]top</span><span>185.220.101.44</span><span>rule:"Invoices"</span></div></div>
+   </div>
+   <div class="ft">job #91422 · incident_summary v7 · claude-sonnet · 611→288 tok · 3.1s <span class="spacer"></span><span>Was this useful?</span><button class="btn ghost">Yes</button><button class="btn ghost">No</button><button class="btn">Show source job</button></div>
+  </div>
+
+  <div class="card">
+   <div class="hd">Similar past cases <span class="tag grn">from APP memory</span></div>
+   <div class="bd">
+    <table><tr><th>Case</th><th>Then in</th><th>Handled by</th><th>Outcome</th><th>Match</th></tr>
+    <tr><td>#5903 Consent phishing, Legal</td><td>XSOAR</td><td>a.reyes</td><td>Contained in 41 min · rule deleted · publisher blocked</td><td>0.91</td></tr>
+    <tr><td>#5871 OAuth app, HR</td><td>XSOAR</td><td>j.okafor</td><td>False positive — sanctioned app</td><td>0.74</td></tr>
+    <tr><td>INC-2210 Inbox rule exfil</td><td>legacy SOAR</td><td>d.lam</td><td>Contained · 3 mailboxes affected</td><td>0.69</td></tr></table>
+    <p style="color:#9aa3b2;font-size:12px">Memory persisted in APP — INC-2210 predates the XSOAR migration and is still searchable.</p>
+   </div>
+   <div class="ft">job #91423 · similar_cases v2 · 1,204→190 tok · 1.9s <span class="spacer"></span><button class="btn">Show source job</button></div>
+  </div>
+
+  <div class="user">Draft a containment plan and open a Jira ticket for IAM.</div>
+
+  <div class="card" style="border-color:#b8860b">
+   <div class="hd">Proposed action <span class="tag amb">awaiting your approval</span><span class="fb">model proposes · human executes</span></div>
+   <div class="bd">
+    <div class="row">
+     <div><div class="k">Containment plan (advisory note → XSOAR #6042)</div><ol class="list"><li>Revoke consent for app 3f1c…9a2e; invalidate refresh tokens for user</li><li>Remove inbox rule "Invoices"; export forwarded items list</li><li>Tenant-wide block of publisher; add IOCs to blocklist</li><li>Hunt query for same app_id across tenant (attached)</li></ol></div>
+     <div><div class="k">Jira ticket (project IAM)</div><div class="kv"><div>Summary</div><div>Block OAuth publisher & review consent policy after #6042</div><div>Priority</div><div>High</div><div>Assignee</div><div>iam-oncall</div><div>Labels</div><div>consent-phishing, oauth</div></div></div>
+    </div>
+    <pre>{"enqueue":[{"job_type":"xsoar_add_note","input":{"incident":6042,"tagged":"AI-generated"}},
+           {"job_type":"jira_create","input":{"project":"IAM","priority":"High", …}}]}</pre>
+   </div>
+   <div class="ft">job #91427 · action_proposal v3 · validated against enqueue schema <span class="spacer"></span><button class="btn">Edit</button><button class="btn">Reject</button><button class="btn pri">Approve & run</button></div>
+  </div>
+
+  <div class="user">How many phishing cases involved the same sender domain this month?</div>
+
+  <div class="card">
+   <div class="hd">Query result <span class="tag">read-only · allowlisted views</span></div>
+   <div class="bd">
+    <table><tr><th>Sender domain</th><th>Cases</th><th>Sources</th><th>First seen</th></tr>
+    <tr><td>inv-relay[.]top</td><td>7</td><td>SIR ×5, XSOAR ×2</td><td>Aug 29</td></tr>
+    <tr><td>secure-docs-share[.]com</td><td>4</td><td>SIR ×4</td><td>Sep 02</td></tr>
+    <tr><td>hr-benefits-update[.]net</td><td>3</td><td>SIR ×2, XSOAR ×1</td><td>Sep 04</td></tr></table>
+    <p style="color:#9aa3b2;font-size:12px">inv-relay[.]top also appears in #6042 IOCs — possible single campaign. <a style="color:#6ea8fe">Create campaign view →</a></p>
+   </div>
+   <div class="ft">job #91431 · sql_query_draft v1 · 3 views · 0.4s query <span class="spacer"></span><button class="btn">Show SQL</button></div>
+  </div>
+
+  <div class="user">Our T1078 detection is noisy — suggest tuning.</div>
+
+  <div class="card">
+   <div class="hd">Detection suggestion <span class="tag">Sigma · from 38 FP dispositions + VECTR run 14</span></div>
+   <div class="bd">
+    <div class="diff">detection:<br>&nbsp;&nbsp;selection: EventID: 4624, LogonType: 10<br>&nbsp;&nbsp;<span class="add">filter_jump: SourceIp|cidr: [10.40.8.0/24]   # sanctioned jump hosts (31/38 FPs)</span><br>&nbsp;&nbsp;<span class="del">condition: selection</span> <span class="add">condition: selection and not filter_jump</span></div>
+    <div class="row"><div><div class="k">Expected effect</div><p>−81% alerts on this rule; 0 of 6 VECTR true positives suppressed</p></div><div><div class="k">Evidence</div><p>FP cases #5990–#6031 (analyst notes: "jump host"); VECTR TC-14-03..08 all from 10.20.x</p></div></div>
+   </div>
+   <div class="ft">job #91436 · detection_tuning v2 · 4,020→410 tok <span class="spacer"></span><button class="btn">Open PR in detections repo</button></div>
+  </div>
+ </div>
+ <div class="compose">
+  <div class="box"><span style="flex:1">Ask about a case, query APP data, or propose an action…</span><span class="badge">⏎ send</span></div>
+  <div class="hint">Every message is an APP job. Answers are schema-validated; actions require approval. Inputs are redacted per type policy.</div>
+ </div>
+</div>
+
+<div class="ctx">
+  <h4>Grounding context</h4>
+  <div class="kv"><div>Case</div><div>XSOAR #6042</div><div>Type</div><div>OAuth consent abuse</div><div>Owner</div><div>m.menon</div><div>Opened</div><div>09:31 today</div><div>Assets</div><div>FIN-WS-118, user f.alvarez</div><div>Status</div><div>Investigating</div></div>
+  <h4>Linked in other tools</h4>
+  <div class="kv"><div>SIR</div><div>SIR0048815</div><div>Vega</div><div>2 findings on FIN-WS-118</div><div>Jira</div><div>— (proposed above)</div></div>
+  <h4>What the model saw</h4>
+  <pre>{ "incident_id": 6042,
+  "title": "Suspicious OAuth grant",
+  "user": "<span class="redact">f.alvarez@corp.com</span>",
+  "app_id": "3f1c…9a2e",
+  "graph_calls": 1100,
+  "inbox_rule": {"name":"Invoices","fwd":"inv-relay.top"},
+  "alerts": [ …3 items… ] }</pre>
+  <p style="font-size:11px;color:#7d8696">10 of 63 incident fields forwarded · PII redacted per type policy</p>
+  <h4>Type health · incident_summary</h4>
+  <div class="kv"><div>Accuracy</div><div>87% analyst agreement (7d)</div><div>Rejections</div><div>1.2% schema</div><div>Cost</div><div>$0.011 / case</div><div>Prompt</div><div>v7 · reviewed 2d ago</div></div>
+</div>
+</body></html>

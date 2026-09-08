@@ -84,6 +84,21 @@ Because APP fronts all of these through one API, a playbook in XSOAR, a flow in 
 cron in a home-grown app onboards the same way: enqueue a job, poll the result. Swapping SOAR
 vendors changes the caller, not the capability.
 
+## Where this leads
+
+Every job — from every tool — records its input and validated result in the same store. That
+makes APP the one place where "what happened across XSOAR, SIR, Vega, VECTR and Jira this month"
+is a single question, not five exports, and that history survives a SOAR or ticketing migration.
+With the LLM types adding summaries, IOCs and dispositions to that record, a natural-language
+front end becomes straightforward: analysts and leaders ask questions across all job types over
+any period, get schema-backed answers with the source job attached, and can propose the next
+automation from the same screen — model proposes, human approves.
+
+![SOC Copilot mock](soc-copilot-mock.png)
+
+*Illustrative mock ([HTML](soc-copilot-mock.html)): incident dossier, similar past cases from APP
+memory, an approval-gated action, a cross-tool query, and a detection-tuning suggestion.*
+
 ## The ask
 
 - A non-production Tachyon key for the job worker, with the usual model allowlist and quota.
