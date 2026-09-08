@@ -13,6 +13,18 @@ Teams want LLMs for routine text-heavy work: incident summaries, ticket triage, 
 extraction, record classification. Today each attempt is its own project with its own credentials,
 retries, logging, and audit gaps. Either nothing ships, or many small ungoverned integrations do.
 
+Worse, every such solution is **tightly coupled to the tool it lives in**: an XSOAR automation, a
+ServiceNow script include, a Jira plugin. The prompt, the model call, the key handling, and the
+output parsing are written in that tool's language, against that tool's API, and die with it. When
+we move to a new SOAR or ticketing platform, all of it is rewritten from scratch — and the
+rewrites drift from each other.
+
+This proposal breaks that coupling. The LLM capability lives once, in APP, behind one API. The
+tools become thin callers: enqueue a job, read the result. Prompts and schemas are portable
+config rows, not tool-specific code. Swapping XSOAR for a new SOAR, or adding Jira, changes a few
+lines of caller integration; nothing about the capability, its governance, or its audit trail is
+touched.
+
 ## Proposal
 
 Add one generic handler, `llm_structured`, to APP — our existing background job platform:
